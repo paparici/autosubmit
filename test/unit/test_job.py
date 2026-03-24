@@ -1134,6 +1134,49 @@ def test_update_parameters_attributes(autosubmit_config, experiment_data, attrib
         assert hasattr(job, attr)
         assert getattr(job, attr) == attributes_to_check[attr]
 
+def test_job_loads_cpmip_thresholds_from_config(autosubmit_config):
+    experiment_data = {
+        "JOBS": {
+            "RANDOM-SECTION": {
+                "FILE": "test.sh",
+                "PLATFORM": "DUMMY_PLATFORM",
+                "CPMIP_THRESHOLDS": {
+                    "SYPD": {
+                        "THRESHOLD": 5.0,
+                        "COMPARISON": "greater_than",
+                        "%_ACCEPTED_ERROR": 10,
+                    }
+                },
+            },
+        },
+    }
+
+    job, _, _ = create_job_and_update_parameters(autosubmit_config, experiment_data)
+
+    assert hasattr(job, "cpmip_thresholds")
+    assert job.cpmip_thresholds == {
+        "SYPD": {
+            "THRESHOLD": 5.0,
+            "COMPARISON": "greater_than",
+            "%_ACCEPTED_ERROR": 10,
+        }
+    }
+
+def test_job_loads_empty_cpmip_thresholds_when_missing(autosubmit_config):
+    experiment_data = {
+        "JOBS": {
+            "RANDOM-SECTION": {
+                "FILE": "test.sh",
+                "PLATFORM": "DUMMY_PLATFORM",
+            },
+        },
+    }
+
+    job, _, _ = create_job_and_update_parameters(autosubmit_config, experiment_data)
+
+    assert hasattr(job, "cpmip_thresholds")
+    assert job.cpmip_thresholds == {}
+
 
 @pytest.mark.parametrize('custom_directives, test_type, result_by_lines', [
     ("test_str a", "platform", ["test_str a"]),
