@@ -1700,6 +1700,32 @@ class Autosubmit:
                 Autosubmit.job_notify(as_conf, expid, inner_job, inner_job.prev_status, {})
 
     @staticmethod
+    def _notify_cpmip_threshold_violations(as_conf, expid, job):
+        """Check if job CPMIP metrics violate thresholds and send notification if violations found.
+        
+        :param as_conf: AutosubmitConfig object
+        :param expid: experiment id string
+        :param job: Job object with cpmip_thresholds attribute
+        """
+
+        if job.status != Status.COMPLETED:
+            return
+        
+        if not job.cpmip_thresholds:
+            return
+        
+        violations = CPMIPMetrics.evaluate(job, job.cpmip_thresholds)
+        
+        if violations:
+            Notifier.notify_cpmip_threshold_violations(
+                MailNotifier(BasicConfig),
+                expid,
+                job.name,
+                violations,
+                as_conf.experiment_data["MAIL"]["TO"]
+            )
+
+    @staticmethod
     def job_notify(as_conf, expid, job, job_prev_status, job_changes_tracker):
         job_changes_tracker[job.name] = (job_prev_status, job.status)
         if as_conf.get_notifications() == "true":
@@ -1708,6 +1734,8 @@ class Autosubmit:
                                               Status.VALUE_TO_KEY[job_prev_status],
                                               Status.VALUE_TO_KEY[job.status],
                                               as_conf.experiment_data["MAIL"]["TO"])
+        
+            Autosubmit._notify_cpmip_threshold_violations(as_conf, expid, job)
         return job_changes_tracker
 
     @staticmethod
