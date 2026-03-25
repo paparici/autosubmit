@@ -149,7 +149,7 @@ class Job(object):
         'delete_when_edgeless', 'het', 'updated_log',
         'submit_time_timestamp', 'start_time_timestamp', 'finish_time_timestamp',
         '_script', '_log_recovery_retries', 'ready_date', 'wrapper_name',
-        'is_wrapper', '_wallclock_in_seconds', '_notify_on', '_cpmip_thresholds' ,'_processors_per_node',
+        'is_wrapper', '_wallclock_in_seconds', '_notify_on', '_cpmip_thresholds', '_chunk_size', '_chunk_size_unit', '_processors_per_node',
         'ec_queue', 'platform_name', '_serial_platform',
         'submitter', '_shape', '_x11', '_x11_options', '_hyperthreading',
         '_scratch_free_space', '_delay_retrials', '_custom_directives',
@@ -284,6 +284,8 @@ class Job(object):
         self._wallclock_in_seconds = None
         self._notify_on = None
         self._cpmip_thresholds = {}
+        self._chunk_size = None
+        self._chunk_size_unit = None
         self._processors_per_node = None
         self.ec_queue = None
         self.platform_name = None
@@ -345,6 +347,8 @@ class Job(object):
         self._wallclock_in_seconds = None
         self._notify_on = None
         self._cpmip_thresholds = {}
+        self._chunk_size = None
+        self._chunk_size_unit = None
         self._processors_per_node = None
         self._shape = None
         self._x11 = False
@@ -703,6 +707,26 @@ class Job(object):
     @cpmip_thresholds.setter
     def cpmip_thresholds(self, value):
         self._cpmip_thresholds = value
+
+    @property
+    @autosubmit_parameter(name='chunk_size')
+    def chunk_size(self):
+        """Chunk size used to compute CPMIP metrics."""
+        return self._chunk_size
+
+    @chunk_size.setter
+    def chunk_size(self, value):
+        self._chunk_size = value
+
+    @property
+    @autosubmit_parameter(name='chunk_size_unit')
+    def chunk_size_unit(self):
+        """Chunk size unit used to compute CPMIP metrics."""
+        return self._chunk_size_unit
+
+    @chunk_size_unit.setter
+    def chunk_size_unit(self, value):
+        self._chunk_size_unit = value
 
     @property
     @autosubmit_parameter(name='validate_template')
@@ -1998,6 +2022,10 @@ class Job(object):
         if self.platform_name:
             self.platform_name = self.platform_name.upper()
         self.cpmip_thresholds = as_conf.jobs_data.get(self.section, {}).get("CPMIP_THRESHOLDS", {})
+        self.chunk_size = as_conf.jobs_data.get(self.section, {}).get("CHUNKSIZE", as_conf.get_chunk_size())
+        self.chunk_size_unit = str(as_conf.jobs_data.get(self.section, {}).get(
+            "CHUNKSIZEUNIT", as_conf.get_chunk_size_unit()
+        )).lower()
 
     def update_check_variables(self, as_conf: AutosubmitConfig) -> None:
         job_data = as_conf.jobs_data.get(self.section, {})
