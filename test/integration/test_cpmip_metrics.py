@@ -25,6 +25,7 @@ def test_cpmip_evaluate_computes_bounds_and_violations_end_to_end():
         runtime=12.0,
         chunk_size=1,
         chunk_size_unit="year",
+        total_processors=240,
     )
     thresholds = {
         "SYPD": {
@@ -50,6 +51,7 @@ def test_cpmip_evaluate_returns_empty_when_metric_within_tolerance():
         runtime=6.0,
         chunk_size=1,
         chunk_size_unit="year",
+        total_processors=240,
     )
     thresholds = {
         "SYPD": {
@@ -70,6 +72,7 @@ def test_cpmip_fetch_metrics_requires_canonical_chunk_fields():
         runtime=24.0,
         chunksize=365,
         chunksizeunit="day",
+        total_processors=120,
     )
 
     metrics = CPMIPMetrics._fetch_metrics(job)
@@ -81,8 +84,55 @@ def test_cpmip_fetch_metrics_returns_empty_for_missing_metadata():
     job = SimpleNamespace(
         runtime=24.0,
         chunk_size=1,
+        total_processors=120,
     )
 
     metrics = CPMIPMetrics._fetch_metrics(job)
 
     assert metrics == {}
+
+
+def test_cpmip_evaluate_computes_chsy_violation_end_to_end():
+    job = SimpleNamespace(
+        runtime=12.0,
+        chunk_size=1,
+        chunk_size_unit="year",
+        total_processors=240,
+    )
+    thresholds = {
+        "CHSY": {
+            "THRESHOLD": 2000.0,
+            "COMPARISON": "less_than",
+            "%_ACCEPTED_ERROR": 5,
+        }
+    }
+
+    violations = CPMIPMetrics.evaluate(job, thresholds)
+
+    assert "CHSY" in violations
+    assert violations["CHSY"]["comparison"] == "less_than"
+    assert violations["CHSY"]["threshold"] == 2000.0
+    assert violations["CHSY"]["accepted_error"] == 5.0
+    assert violations["CHSY"]["bound"] == 2100.0
+    # CHSY = (240 * 12) / 1 = 2880
+    assert violations["CHSY"]["real_value"] == 2880.0
+
+
+def test_cpmip_evaluate_chsy_boundary_is_not_violation_for_less_than():
+    job = SimpleNamespace(
+        runtime=12.0,
+        chunk_size=1,
+        chunk_size_unit="year",
+        total_processors=240,
+    )
+    thresholds = {
+        "CHSY": {
+            "THRESHOLD": 2880.0,
+            "COMPARISON": "less_than",
+            "%_ACCEPTED_ERROR": 0,
+        }
+    }
+
+    violations = CPMIPMetrics.evaluate(job, thresholds)
+
+    assert violations == {}

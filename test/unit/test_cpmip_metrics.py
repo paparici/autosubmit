@@ -150,11 +150,12 @@ class TestEvaluateCPMIPMetrics:
 
 class TestFetchCPMIPMetrics:
 
-    def test_fetch_metrics_calls_sy_and_sypd_and_returns_sypd(self, mocker):
+    def test_fetch_metrics_calls_sy_sypd_chsy_and_returns_all_metrics(self, mocker):
         job = SimpleNamespace(
             runtime=12.0,
             chunk_size=2,
             chunk_size_unit="month",
+            total_processors=240,
         )
 
         sy_mock = mocker.patch(
@@ -165,12 +166,17 @@ class TestFetchCPMIPMetrics:
             "autosubmit.metrics.cpmip_metrics.CPMIPMetrics.SYPD",
             return_value=1.0,
         )
+        chsy_mock = mocker.patch(
+            "autosubmit.metrics.cpmip_metrics.CPMIPMetrics.CHSY",
+            return_value=5760.0,
+        )
 
         metrics = CPMIPMetrics._fetch_metrics(job)
 
         sy_mock.assert_called_once_with(2, "month")
         sypd_mock.assert_called_once_with(12.0, 0.5)
-        assert metrics == {"SYPD": 1.0}
+        chsy_mock.assert_called_once_with(12.0, 0.5, 240)
+        assert metrics == {"SYPD": 1.0, "CHSY": 5760.0}
 
     def test_fetch_metrics_returns_empty_when_chunk_unit_is_unsupported(self):
         job = SimpleNamespace(
@@ -188,6 +194,7 @@ class TestFetchCPMIPMetrics:
             runtime=0,
             chunk_size=1,
             chunk_size_unit="year",
+            total_processors=64,
         )
 
         metrics = CPMIPMetrics._fetch_metrics(job)
@@ -199,6 +206,7 @@ class TestFetchCPMIPMetrics:
             runtime=12,
             chunk_size=-1,
             chunk_size_unit="year",
+            total_processors=64,
         )
 
         metrics = CPMIPMetrics._fetch_metrics(job)
@@ -210,11 +218,35 @@ class TestFetchCPMIPMetrics:
             runtime=24.0,
             chunksize=365,
             chunksizeunit="day",
+            total_processors=120,
         )
 
         metrics = CPMIPMetrics._fetch_metrics(job)
 
         assert metrics == {}
+
+    def test_fetch_metrics_returns_sypd_when_total_processors_is_missing(self):
+        job = SimpleNamespace(
+            runtime=24.0,
+            chunk_size=365,
+            chunk_size_unit="day",
+        )
+
+        metrics = CPMIPMetrics._fetch_metrics(job)
+
+        assert metrics == {"SYPD": 1.0}
+
+    def test_fetch_metrics_returns_sypd_when_total_processors_is_invalid(self):
+        job = SimpleNamespace(
+            runtime=24.0,
+            chunk_size=365,
+            chunk_size_unit="day",
+            total_processors=0,
+        )
+
+        metrics = CPMIPMetrics._fetch_metrics(job)
+
+        assert metrics == {"SYPD": 1.0}
 
 
 class TestComputationCPMIPMetrics:
@@ -228,6 +260,10 @@ class TestComputationCPMIPMetrics:
     def test_sypd_formula_uses_runtime_in_hours(self):
         # 1 simulated year in 12h runtime -> 2 simulated years per day
         assert CPMIPMetrics.SYPD(12, 1.0) == pytest.approx(2.0)
+
+    def test_chsy_formula_uses_runtime_simulated_years_and_cores(self):
+        # 120 cores during 12h for 1 simulated year -> 1440 core-hours/simulated year
+        assert CPMIPMetrics.CHSY(12, 1.0, 120) == pytest.approx(1440.0)
 
     def test_sy_raises_value_error_for_unsupported_chunk_size_unit(self):
         with pytest.raises(ValueError, match="Unsupported chunk_size_unit"):
@@ -245,3 +281,17 @@ class TestComputationCPMIPMetrics:
     def test_sypd_raises_value_error_for_non_positive_simulated_years(self):
         with pytest.raises(ValueError, match="simulated_years must be > 0"):
             CPMIPMetrics.SYPD(12, 0)
+
+    @pytest.mark.parametrize("runtime", [0, -2])
+    def test_chsy_raises_value_error_for_non_positive_runtime(self, runtime):
+        with pytest.raises(ValueError, match="runtime must be > 0 hours"):
+            CPMIPMetrics.CHSY(runtime, 1.0, 128)
+
+    def test_chsy_raises_value_error_for_non_positive_simulated_years(self):
+        with pytest.raises(ValueError, match="simulated_years must be > 0"):
+            CPMIPMetrics.CHSY(12, 0, 128)
+
+    @pytest.mark.parametrize("cores", [0, -16])
+    def test_chsy_raises_value_error_for_non_positive_total_processors(self, cores):
+        with pytest.raises(ValueError, match="total_processors must be > 0"):
+            CPMIPMetrics.CHSY(12, 1.0, cores)

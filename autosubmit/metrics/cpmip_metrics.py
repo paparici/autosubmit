@@ -68,6 +68,30 @@ class CPMIPMetrics:
         return sy * 24.0 / runtime_hours
 
     @staticmethod
+    def CHSY(runtime, simulated_years, total_processors) -> float:
+        """Compute Core-Hours per Simulated Year.
+
+        :param runtime: Runtime in hours.
+        :param simulated_years: Simulated years.
+        :param total_processors: Number of processors used by the job.
+        :return: Core-hours per simulated year.
+        :raises ValueError: If any input is not positive.
+        """
+        runtime_hours = float(runtime)
+        if runtime_hours <= 0:
+            raise ValueError("runtime must be > 0 hours")
+
+        sy = float(simulated_years)
+        if sy <= 0:
+            raise ValueError("simulated_years must be > 0")
+
+        processors = float(total_processors)
+        if processors <= 0:
+            raise ValueError("total_processors must be > 0")
+
+        return processors * runtime_hours / sy
+
+    @staticmethod
     def _fetch_metrics(job) -> dict:
         """Build CPMIP metrics from job runtime/chunk metadata.
 
@@ -83,11 +107,24 @@ class CPMIPMetrics:
 
         try:
             simulated_years = CPMIPMetrics.SY(chunk_size, chunk_size_unit)
-            sypd = CPMIPMetrics.SYPD(runtime, simulated_years)
         except (ValueError, TypeError):
             return {}
 
-        return {"SYPD": sypd}
+        metrics = {}
+
+        try:
+            metrics["SYPD"] = CPMIPMetrics.SYPD(runtime, simulated_years)
+        except (ValueError, TypeError):
+            pass
+
+        total_processors = getattr(job, "total_processors", None)
+        if total_processors is not None:
+            try:
+                metrics["CHSY"] = CPMIPMetrics.CHSY(runtime, simulated_years, total_processors)
+            except (ValueError, TypeError):
+                pass
+
+        return metrics
 
     @staticmethod
     def evaluate(job, thresholds) -> dict:
