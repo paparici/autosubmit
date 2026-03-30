@@ -92,35 +92,82 @@ class CPMIPMetrics:
         return processors * runtime_hours / sy
 
     @staticmethod
+    def _get_runtime_hours(job):
+        """Extract runtime in hours from job timestamps.
+
+        :param job: Job-like object with start/finish timestamps.
+        :return: Runtime in hours or ``None`` when unavailable/invalid.
+        """
+        start_time = getattr(job, "start_time_timestamp", None)
+        finish_time = getattr(job, "finish_time_timestamp", None)
+        if start_time is None or finish_time is None:
+            return None
+
+        try:
+            runtime_seconds = float(finish_time) - float(start_time)
+        except (ValueError, TypeError):
+            return None
+
+        if runtime_seconds <= 0:
+            return None
+
+        return runtime_seconds / 3600.0
+
+    @staticmethod
+    def _get_simulated_years(job):
+        """Extract simulated years from job chunk metadata.
+
+        :param job: Job-like object with ``chunk_size`` and ``chunk_size_unit``.
+        :return: Simulated years or ``None`` when metadata is unavailable/invalid.
+        """
+        chunk_size = getattr(job, "chunk_size", None)
+        chunk_size_unit = getattr(job, "chunk_size_unit", None)
+        if chunk_size is None or chunk_size_unit is None:
+            return None
+
+        try:
+            return CPMIPMetrics.SY(chunk_size, chunk_size_unit)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _get_processors_for_chsy(job):
+        """Resolve processor count for CHSY computation.
+
+        Uses the job ``total_processors`` property as the source of truth.
+
+        :param job: Job-like object.
+        :return: Processor count or ``None`` when unavailable/invalid.
+        """
+        try:
+            return getattr(job, "total_processors", None)
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    @staticmethod
     def _fetch_metrics(job) -> dict:
         """Build CPMIP metrics from job runtime/chunk metadata.
 
         :param job: Job object.
         :return: Dictionary with computed metrics. Empty dict when required metadata is missing or invalid.
         """
-        runtime = getattr(job, "runtime", None)
-        chunk_size = getattr(job, "chunk_size", None)
-        chunk_size_unit = getattr(job, "chunk_size_unit", None)
-
-        if runtime is None or chunk_size is None or chunk_size_unit is None:
-            return {}
-
-        try:
-            simulated_years = CPMIPMetrics.SY(chunk_size, chunk_size_unit)
-        except (ValueError, TypeError):
+        runtime_hours = CPMIPMetrics._get_runtime_hours(job)
+        simulated_years = CPMIPMetrics._get_simulated_years(job)
+        if runtime_hours is None or simulated_years is None:
             return {}
 
         metrics = {}
 
         try:
-            metrics["SYPD"] = CPMIPMetrics.SYPD(runtime, simulated_years)
+            metrics["SYPD"] = CPMIPMetrics.SYPD(runtime_hours, simulated_years)
         except (ValueError, TypeError):
             pass
 
-        total_processors = getattr(job, "total_processors", None)
+        total_processors = CPMIPMetrics._get_processors_for_chsy(job)
+
         if total_processors is not None:
             try:
-                metrics["CHSY"] = CPMIPMetrics.CHSY(runtime, simulated_years, total_processors)
+                metrics["CHSY"] = CPMIPMetrics.CHSY(runtime_hours, simulated_years, total_processors)
             except (ValueError, TypeError):
                 pass
 
